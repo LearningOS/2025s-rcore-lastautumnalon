@@ -47,7 +47,7 @@ pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
         ret[0] as isize
     } else if _trace_request == 1 {
         let id = _id as *mut u8;
-        let area = unsafe {core::slice::from_raw_parts_mut(id, 1)};
+        let area = unsafe {core::slice::from_raw_parts_mut(id, 1)}; // gpt hinted this line.
         area[0] = _data as u8;
         0
     } else if _trace_request == 2{
