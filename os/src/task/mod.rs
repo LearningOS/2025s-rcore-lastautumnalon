@@ -10,6 +10,7 @@
 //! might not be what you expect.
 
 mod context;
+mod count;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
@@ -24,6 +25,7 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
+pub use count::SyscallCount;
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -153,6 +155,21 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// update counter for syscall
+    fn update_syscall_counter(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].counter.update(syscall_id);
+        drop(inner);
+    }
+
+    // get counter of syscall
+    fn get_syscall_counter(&self, syscall_id: usize) -> u8 {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].counter.getcount(syscall_id)
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +218,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Update the current counter for syscall with id
+pub fn update_syscall_counter(syscall_id: usize) {
+    TASK_MANAGER.update_syscall_counter(syscall_id);
+}
+
+/// get the counter of syscall specified by syscall_id
+pub fn get_syscall_counter(syscall_id: usize) -> u8 {
+    TASK_MANAGER.get_syscall_counter(syscall_id)
 }

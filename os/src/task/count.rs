@@ -1,6 +1,6 @@
 //! Implementation of [`SyscallCount`]
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone,Debug)]
 #[repr(C)]
 /// task SyscallCount
 pub struct SyscallCount {

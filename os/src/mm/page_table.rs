@@ -27,7 +27,7 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 /// page table entry structure
 pub struct PageTableEntry {
@@ -69,6 +69,11 @@ impl PageTableEntry {
     /// The page pointered by page table entry is executable?
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
+    }
+    /// The page pointered by page table entry is accessible by user?
+    pub fn accessibleu(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty() // hint by ChatGPT
+                                                          // learned when user call syscall, if the U flag not true, the mem can't be accessed by this user
     }
 }
 
@@ -132,6 +137,7 @@ impl PageTable {
             ppn = pte.ppn();
         }
         result
+        
     }
     /// set the map between virtual page number and physical page number
     #[allow(unused)]
@@ -181,21 +187,29 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
 }
 
 /// read/write a byte rw=r,read rw=w,write
-pub fn rw_byte(token: usize, ptr: *const u8, rw: char, data:usize) -> Option<u8> {
+pub fn rw_byte(token: usize, ptr: *const u8, rw: char, data: usize) -> Option<u8> {
     let page_table = PageTable::from_token(token);
     let addr = ptr as usize;
     let va = VirtAddr::from(addr);
     let vpn = va.floor();
-    let pte = page_table.translate(vpn).unwrap();
-    if !pte.is_valid() || (rw=='r'&&!pte.readable()) || (rw=='w'&&!pte.writable()) {
+    let pte = page_table.translate(vpn);
+    if let None = pte {
+        return None;
+    }
+    let pte = pte.unwrap();
+    if !pte.is_valid()
+        || (rw == 'r' && !pte.readable())
+        || (rw == 'w' && !pte.writable())
+        || (pte.is_valid() && !pte.accessibleu())
+    {
         return None;
     }
     let ppn = pte.ppn();
     if rw == 'r' {
-        return Some(*ppn.get_mut())
-    } else if rw == 'w'{
-        let byte_mut: &mut u8 = ppn.get_mut();
-        *byte_mut = data as u8;
+        return Some(ppn.get_bytes_array()[va.page_offset()]);
+    } else if rw == 'w' {
+        let byte_mut = ppn.get_bytes_array();
+        byte_mut[va.page_offset()] = data as u8;
         return Some(0);
     } else {
         return None;
