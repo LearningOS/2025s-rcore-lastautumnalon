@@ -179,3 +179,25 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     }
     v
 }
+
+/// read/write a byte rw=r,read rw=w,write
+pub fn rw_byte(token: usize, ptr: *const u8, rw: char, data:usize) -> Option<u8> {
+    let page_table = PageTable::from_token(token);
+    let addr = ptr as usize;
+    let va = VirtAddr::from(addr);
+    let vpn = va.floor();
+    let pte = page_table.translate(vpn).unwrap();
+    if !pte.is_valid() || (rw=='r'&&!pte.readable()) || (rw=='w'&&!pte.writable()) {
+        return None;
+    }
+    let ppn = pte.ppn();
+    if rw == 'r' {
+        return Some(*ppn.get_mut())
+    } else if rw == 'w'{
+        let byte_mut: &mut u8 = ppn.get_mut();
+        *byte_mut = data as u8;
+        return Some(0);
+    } else {
+        return None;
+    }
+}
