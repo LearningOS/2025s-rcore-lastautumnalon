@@ -16,6 +16,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr, VirtPageNum};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -170,6 +171,37 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].counter.getcount(syscall_id)
     }
+
+    /// insert a frame area
+    fn insert_framed_area(&self,start_va:VirtAddr, end_va:VirtAddr, permission:MapPermission) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].memory_set.insert_framed_area(start_va, end_va, permission);
+    }
+
+    /// pop framed area
+    fn pop_framed_area(&self,start_va:VirtAddr,end_va:VirtAddr)
+    {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].memory_set.pop_framed_area(start_va, end_va);
+    }
+
+    /// can find page table entry ?
+    fn find_pte(&self, vpn:VirtPageNum) -> bool{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let pte = inner.tasks[current].memory_set.find_pte(vpn);
+        if pte.is_some() {
+            if pte.unwrap().is_valid(){
+            true
+            } else {
+                false
+            }
+        }else {
+            false
+        }
+    }
 }
 
 /// Run the first task in task list.
@@ -228,4 +260,21 @@ pub fn update_syscall_counter(syscall_id: usize) {
 /// get the counter of syscall specified by syscall_id
 pub fn get_syscall_counter(syscall_id: usize) -> u8 {
     TASK_MANAGER.get_syscall_counter(syscall_id)
+}
+
+/// insert new frame area
+pub fn insert_framed_area(start_va:VirtAddr,end_va:VirtAddr,permission:MapPermission)
+{
+    TASK_MANAGER.insert_framed_area(start_va, end_va, permission);
+}
+
+/// pop framed area
+pub fn pop_framed_area(start_va:VirtAddr,end_va:VirtAddr)
+{
+    TASK_MANAGER.pop_framed_area(start_va, end_va);
+}
+
+/// find page table entry ?
+pub fn find_pte(vpn: VirtPageNum) -> bool{
+    TASK_MANAGER.find_pte(vpn)
 }

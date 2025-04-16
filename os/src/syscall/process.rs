@@ -1,6 +1,11 @@
 //! Process management syscalls
 use crate::{
-    mm::{ rw_byte, translated_byte_buffer}, task::{change_program_brk, current_user_token, exit_current_and_run_next, get_syscall_counter, suspend_current_and_run_next}, timer::get_time_us
+    config::PAGE_SIZE,
+    mm::{rw_byte, translated_byte_buffer, MapPermission, VPNRange, VirtAddr},
+    task::{
+        change_program_brk, current_user_token, exit_current_and_run_next, find_pte, get_syscall_counter, insert_framed_area, pop_framed_area, suspend_current_and_run_next
+    },
+    timer::get_time_us,
 };
 
 #[repr(C)]
@@ -31,19 +36,17 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
     let tv = TimeVal {
-        sec: us/1_000_000,
+        sec: us / 1_000_000,
         usec: us % 1_000_000,
     };
     let buffers = translated_byte_buffer(current_user_token(), _ts as *const u8, 16);
 
-    let tv_bytes = unsafe {
-        core::slice::from_raw_parts((&tv as *const TimeVal) as *const u8, 16)
-    };
+    let tv_bytes = unsafe { core::slice::from_raw_parts((&tv as *const TimeVal) as *const u8, 16) };
 
     let mut written = 0;
-    for buf in buffers{
+    for buf in buffers {
         let len = buf.len();
-        buf.copy_from_slice(&tv_bytes[written..written+len]);
+        buf.copy_from_slice(&tv_bytes[written..written + len]);
         written += len;
     }
 
@@ -70,7 +73,7 @@ pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
         } else {
             return 0;
         }
-    } else if _trace_request == 2{
+    } else if _trace_request == 2 {
         return get_syscall_counter(_id) as isize;
     } else {
         -1
@@ -78,14 +81,48 @@ pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize {
+pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize { // asked zymatrix for help
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    if _start % PAGE_SIZE != 0 || _prot & !0x7 != 0 || _prot & 0x7 == 0 {
+        return -1;
+    }
+    let start = VirtAddr::from(_start).floor();
+    let end = VirtAddr::from(_start + _len).ceil();
+    let range = VPNRange::new(start, end);
+    for vpn in range {
+        if find_pte(vpn) {
+            return -1;
+        }
+    }
+    let mut permission: MapPermission = MapPermission::empty();
+    if _prot & 0b1 != 0 {
+        permission = permission | MapPermission::R;
+    }
+    if _prot & 0b10 != 0 {
+        permission = permission | MapPermission::W;
+    }
+    if _prot & 0b100 != 0 {
+        permission = permission | MapPermission::X;
+    }
+    insert_framed_area(start.into(), end.into(), permission | MapPermission::U);
     0
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    if _start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    let start = VirtAddr::from(_start).floor();
+    let end = VirtAddr::from(_start+_len).ceil();
+    let range = VPNRange::new(start, end);
+    for vpn in range {
+        if !find_pte(vpn) {
+            return -1;
+        }
+    }
+    pop_framed_area(start.into(), end.into());
     0
 }
 /// change data segment size
