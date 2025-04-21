@@ -133,6 +133,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize {
         current_task().unwrap().pid.0
     );
     if _start % PAGE_SIZE != 0 || _prot & !0x7 != 0 || _prot & 0x7 == 0 {
+        println!("here 1");
         return -1;
     }
     let start = VirtAddr::from(_start).floor();
@@ -140,6 +141,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize {
     let range = VPNRange::new(start, end);
     for vpn in range {
         if find_pte(current_user_token(),vpn) {
+            println!("here 2");
             return -1;
         }
     }
@@ -173,7 +175,7 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         }
     }
     let task = current_task().unwrap();
-    task.inner_exclusive_access().memory_set.remove_area_with_start_vpn(start);
+    task.inner_exclusive_access().memory_set.pop_framed_area(start.into(), end.into());
     0
 }
 
@@ -187,6 +189,20 @@ pub fn sys_sbrk(size: i32) -> isize {
     }
 }
 
+// fn sys_spawn(path: *const u8) -> isize
+
+//     syscall ID: 400
+
+//     功能：新建子进程，使其执行目标程序。
+
+//     说明：成功返回子进程id，否则返回 -1。
+
+//     可能的错误：
+
+//             无效的文件名。
+
+
+
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
@@ -194,7 +210,16 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let task = current_task().unwrap();
+        let spawned_task = task.spawn(data);
+        add_task(spawned_task.clone());
+        spawned_task.getpid() as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
@@ -203,5 +228,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio >= 2{
+        current_task().unwrap().set_priority(_prio as usize);
+        _prio
+    } else {
+        -1
+    }
+    
 }

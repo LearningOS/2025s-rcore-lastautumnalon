@@ -1,5 +1,6 @@
 //!Implementation of [`TaskManager`]
 use super::TaskControlBlock;
+use crate::config::BIGSTRIDE;
 use crate::sync::UPSafeCell;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -21,9 +22,22 @@ impl TaskManager {
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
         self.ready_queue.push_back(task);
     }
-    /// Take a process out of the ready queue
+    /// Take a process out of the ready queue (stride scheduling)
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        if self.ready_queue.is_empty() {
+            return None;
+        }
+        let min_task_index = self.ready_queue.iter().enumerate().min_by_key(|(_,x)|x.inner_exclusive_access().get_stride()).map(|(x,_)|x).unwrap();
+        let min_task = self.ready_queue.remove(min_task_index).unwrap();
+        // stride += pass
+        
+        let inner = min_task.inner_exclusive_access();
+        let stride = inner.get_stride();
+        let pass = BIGSTRIDE / inner.get_priority();
+        // manual drop inner , otherwise inner has two mut borrow (the second is in set_stride) (linted by ChatGPT)
+        drop(inner);
+        min_task.set_stride(stride + pass);
+        Some(min_task.clone())
     }
 }
 
