@@ -2,12 +2,10 @@
 use alloc::sync::Arc;
 
 use crate::{
-    loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
-    task::{
+    config::PAGE_SIZE, loader::get_app_data_by_name, mm::{find_pte, translated_byte_buffer, translated_refmut, translated_str, MapPermission, VPNRange, VirtAddr}, task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next,
-    },
+    }, timer::get_time_us
 };
 
 #[repr(C)]
@@ -110,25 +108,73 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let us = get_time_us();
+    let tv = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    let buffers = translated_byte_buffer(current_user_token(), _ts as *const u8, 16);
+
+    let tv_bytes = unsafe {core::slice::from_raw_parts((&tv as *const TimeVal) as *const u8, 16)};
+
+    let mut written = 0;
+    for buf in buffers {
+        let len = buf.len();
+        buf.copy_from_slice(&tv_bytes[written..written+len]);
+        written += len;
+    };
+    0
 }
 
 /// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % PAGE_SIZE != 0 || _prot & !0x7 != 0 || _prot & 0x7 == 0 {
+        return -1;
+    }
+    let start = VirtAddr::from(_start).floor();
+    let end = VirtAddr::from(_start + _len).ceil();
+    let range = VPNRange::new(start, end);
+    for vpn in range {
+        if find_pte(current_user_token(),vpn) {
+            return -1;
+        }
+    }
+    let mut permission: MapPermission = MapPermission::empty();
+    if _prot & 0b1 != 0 {
+        permission = permission | MapPermission::R;
+    }
+    if _prot & 0b10 != 0 {
+        permission = permission | MapPermission::W;
+    }
+    if _prot & 0b100 != 0 {
+        permission = permission | MapPermission::X;
+    }
+    let task = current_task().unwrap();
+    task.inner_exclusive_access().memory_set.insert_framed_area(start.into(), end.into(), permission | MapPermission::U);
+    0
 }
 
-/// YOUR JOB: Implement munmap.
+// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    if _start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    let start = VirtAddr::from(_start).floor();
+    let end = VirtAddr::from(_start+_len).ceil();
+    let range = VPNRange::new(start, end);
+    for vpn in range {
+        if !find_pte(current_user_token(),vpn) {
+            return -1;
+        }
+    }
+    let task = current_task().unwrap();
+    task.inner_exclusive_access().memory_set.remove_area_with_start_vpn(start);
+    0
 }
 
 /// change data segment size

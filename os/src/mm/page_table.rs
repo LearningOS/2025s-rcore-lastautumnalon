@@ -213,3 +213,9 @@ pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> &'static mut T {
         .unwrap()
         .get_mut()
 }
+
+/// find pte
+pub fn find_pte(token: usize, vpn:VirtPageNum) -> bool {
+    let page_table = PageTable::from_token(token);
+    page_table.find_pte(vpn).is_some()
+}
