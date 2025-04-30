@@ -1,5 +1,5 @@
 //! File and filesystem-related syscalls
-use crate::fs::{open_file, OSInode, OpenFlags, Stat, StatMode};
+use crate::fs::{link_file, open_file, OpenFlags, Stat, StatMode};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
@@ -81,7 +81,15 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
         "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    
+    // let task = current_task().unwrap();
+    // let inner = task.inner_exclusive_access();
+    // if _fd >= inner.fd_table.len() {
+    //     return -1;
+    // }
+    // if inner.fd_table[_fd].is_none() {
+    //     return -1;
+    // }
+    // inner.fd_table[_fd].unwrap()
     -1
 }
 
@@ -91,7 +99,15 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
         "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let old_name = translated_str(token, _old_name);
+    let new_name = translated_str(token, _new_name);
+    link_file(&old_name, &new_name);
+    if old_name == new_name {
+        -1
+    } else {
+        0
+    }
 }
 
 /// YOUR JOB: Implement unlinkat.

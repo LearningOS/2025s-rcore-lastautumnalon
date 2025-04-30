@@ -101,6 +101,22 @@ impl OpenFlags {
     }
 }
 
+/// link a file yinglianjie
+pub fn link_file(old_name: &str, new_name: &str) {
+    let inode_number = ROOT_INODE.get_entry_ino(old_name).unwrap();
+    ROOT_INODE.link_insert_new_dirent(new_name, inode_number);
+}
+
+/// unlink a file
+pub fn unlink_file(name: &str) -> Option<i32> {
+    if let Some(inode) = ROOT_INODE.find(name) {
+        inode.clear();
+        
+    } else {
+        None
+    }
+}
+
 /// Open a file
 pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     let (readable, writable) = flags.read_write();
@@ -156,4 +172,12 @@ impl File for OSInode {
         }
         total_write_size
     }
+    // fn stat(&self) -> Stat {
+    // let mut inner = self.inner.exclusive_access();
+    // let inode = inner.inode;
+    // let ino = inode.block_id;
+
+    // inode.read_disk_inode(|disk_inode|disk_inode.is_dir())
+
+    // }
 }

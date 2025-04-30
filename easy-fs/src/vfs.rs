@@ -8,7 +8,8 @@ use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
-    block_id: usize,
+    /// pub for fstat
+    pub block_id: usize,
     block_offset: usize,
     fs: Arc<Mutex<EasyFileSystem>>,
     block_device: Arc<dyn BlockDevice>,
@@ -30,7 +31,7 @@ impl Inode {
         }
     }
     /// Call a function over a disk inode to read it
-    fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
+    pub fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
         get_block_cache(self.block_id, Arc::clone(&self.block_device))
             .lock()
             .read(self.block_offset, f)
@@ -138,6 +139,17 @@ impl Inode {
         )))
         // release efs lock automatically by compiler
     }
+    /// 插入新的目录项，应该用于link at
+    pub fn link_insert_new_dirent(&self, name: &str,inode_id: u32) {
+        let mut fs = self.fs.lock();
+        self.modify_disk_inode(|root_inode|{
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            self.increase_size(new_size as u32, root_inode,&mut fs);
+            let dirent = DirEntry::new(name, inode_id);
+            root_inode.write_at(file_count*DIRENT_SZ, dirent.as_bytes(), &self.block_device);
+        });
+    }
     /// List inodes under current inode
     pub fn ls(&self) -> Vec<String> {
         let _fs = self.fs.lock();
@@ -154,6 +166,40 @@ impl Inode {
             }
             v
         })
+    }
+    /// 取消一个目录的链接，如果链接数为0则删除。
+    pub fn unlink_file(&self, name: &str) {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode|{
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            for i in 0..file_count {
+                let mut dirent = DirEntry::empty();
+                assert_eq!(disk_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
+                DIRENT_SZ,
+                );
+                if dirent.name()==name {
+                    disk_inode.write_at(i * DIRENT_SZ, buf, &self.block_device,);
+                }
+            }
+        })
+    }
+    /// 获取目录项的inode_id
+    pub fn get_entry_ino(&self, name: &str) -> Option<u32> {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode|{
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            for i in 0..file_count {
+                let mut dirent = DirEntry::empty();
+                assert_eq!(
+                    disk_inode.read_at(i*DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.name()==name{
+                    return Some(dirent.inode_id());
+                }
+            };
+            None
+        }).map(|x|x)
     }
     /// Read data from current inode
     pub fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {

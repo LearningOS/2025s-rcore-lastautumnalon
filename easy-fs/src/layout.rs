@@ -161,6 +161,7 @@ impl DiskInode {
                 })
         }
     }
+
     /// Inncrease the size of current disk inode
     pub fn increase_size(
         &mut self,
@@ -386,6 +387,26 @@ impl DiskInode {
             start = end_current_block;
         }
         write_size
+    }
+
+    pub fn remove_at(
+        &mut self,
+        offset: usize,
+        buf: &[u8],
+        block_device: &Arc<dyn BlockDevice>,
+    ) -> usize {
+        let end = offset;
+        let mut start = (offset - buf.len()).max(0 as usize);
+        assert!(start <= end);
+        let mut start_block = start / BLOCK_SZ;
+        let mut write_size = 0usize;
+        loop {
+            let mut end_current_block = (end / BLOCK_SZ - 1) * BLOCK_SZ;
+            end_current_block = end_current_block.min(end);
+            let block_write_size = end_current_block - start;
+            get_block_cache(
+                self.get_block_id(start_block as u32, block_device), block_device)
+        }
     }
 }
 /// A directory entry
