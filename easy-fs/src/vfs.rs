@@ -10,7 +10,8 @@ use spin::{Mutex, MutexGuard};
 pub struct Inode {
     /// pub for fstat
     pub block_id: usize,
-    block_offset: usize,
+    /// pub 
+    pub block_offset: usize,
     fs: Arc<Mutex<EasyFileSystem>>,
     block_device: Arc<dyn BlockDevice>,
 }
@@ -191,7 +192,7 @@ impl Inode {
     }
 
 	/// get link number
-	pub fn get_nlink(&self, block_id: u32) -> u32 {
+	pub fn get_nlink(&self, block_id: u32, block_offset: usize) -> u32 {
 		let fs = self.fs.lock();
 		let mut count:u32 = 0;
 		self.read_disk_inode(|disk_inode|
@@ -200,8 +201,8 @@ impl Inode {
 			for i in 0..file_count {
 				let mut dirent = DirEntry::empty();
 				assert_eq!(disk_inode.read_at(i*DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),DIRENT_SZ);
-				let (_block_id, _) = fs.get_disk_inode_pos(dirent.inode_id());
-				if _block_id == block_id {
+				let (_block_id, _block_offset) = fs.get_disk_inode_pos(dirent.inode_id());
+				if _block_id == block_id && _block_offset == block_offset{
 					count += 1;
 				}
 			}

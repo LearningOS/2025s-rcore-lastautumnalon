@@ -95,7 +95,7 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
 		if let Some(osinode) = file.as_any().downcast_ref::<OSInode>() {
 			let ino = osinode.get_inode_id();
 			let osinode_inner = osinode.inner.exclusive_access();
-			let nlink = get_nlink(osinode_inner.inode.block_id as u32);
+			let nlink = get_nlink(osinode_inner.inode.block_id as u32,osinode_inner.inode.block_offset);
 			let st = Stat::new(0,ino.try_into().unwrap(),StatMode::FILE,nlink);
 			let st_ptr = &st as *const Stat;
 			let dst_vec = translated_byte_buffer(current_user_token(), _st as *const u8, core::mem::size_of::<Stat>());
@@ -107,7 +107,7 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
 			}
 		}
 	}
-    -1
+    0
 }
 
 /// YOUR JOB: Implement linkat.

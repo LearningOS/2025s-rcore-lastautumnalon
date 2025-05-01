@@ -114,7 +114,7 @@ pub fn link_file(old_name: &str, new_name: &str){
 /// unlink a file
 pub fn unlink_file(name: &str) -> Option<i32> {
     if let Some(inode) = ROOT_INODE.find(name) {
-        if ROOT_INODE.get_nlink(inode.block_id as u32) > 1{
+        if ROOT_INODE.get_nlink(inode.block_id as u32,inode.block_offset) > 1{
 			ROOT_INODE.unlink_file(name);
 		} else {
 			inode.clear();
@@ -127,8 +127,8 @@ pub fn unlink_file(name: &str) -> Option<i32> {
 }
 
 /// get nlink
-pub fn get_nlink(block_id:u32) -> u32 {
-	ROOT_INODE.get_nlink(block_id)
+pub fn get_nlink(block_id:u32,block_offset:usize) -> u32 {
+	ROOT_INODE.get_nlink(block_id,block_offset)
 }
 
 /// Open a file
