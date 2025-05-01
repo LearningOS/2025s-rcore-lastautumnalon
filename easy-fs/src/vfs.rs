@@ -91,6 +91,7 @@ impl Inode {
         }
         disk_inode.increase_size(new_size, v, &self.block_device);
     }
+
     /// Create inode under current inode by name
     pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
         let mut fs = self.fs.lock();
@@ -139,6 +140,7 @@ impl Inode {
         )))
         // release efs lock automatically by compiler
     }
+
     /// 插入新的目录项，应该用于link at
     pub fn link_insert_new_dirent(&self, name: &str,inode_id: u32) {
         let mut fs = self.fs.lock();
@@ -162,7 +164,11 @@ impl Inode {
                     disk_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
                     DIRENT_SZ,
                 );
+				if dirent.inode_id() == 0{
+					continue;
+				}
                 v.push(String::from(dirent.name()));
+				
             }
             v
         })
@@ -170,18 +176,20 @@ impl Inode {
     /// 取消一个目录的链接，如果链接数为0则删除。
     pub fn unlink_file(&self, name: &str) {
         let _fs = self.fs.lock();
-        self.read_disk_inode(|disk_inode|{
+        self.modify_disk_inode(|disk_inode|{
             let file_count = (disk_inode.size as usize) / DIRENT_SZ;
             for i in 0..file_count {
                 let mut dirent = DirEntry::empty();
                 assert_eq!(disk_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
                 DIRENT_SZ,
                 );
-                if dirent.name()==name {
-                    disk_inode.write_at(i * DIRENT_SZ, buf, &self.block_device,);
+                if dirent.name()==name{
+					let dirent = DirEntry::empty();
+					disk_inode.write_at(i*DIRENT_SZ, dirent.as_bytes(), &self.block_device,);
                 }
             }
         })
+
     }
     /// 获取目录项的inode_id
     pub fn get_entry_ino(&self, name: &str) -> Option<u32> {

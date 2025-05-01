@@ -14,6 +14,7 @@ use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
 
+
 /// inode in memory
 /// A wrapper around a filesystem inode
 /// to implement File trait atop
@@ -62,6 +63,12 @@ lazy_static! {
     };
 }
 
+lazy_static! {
+	pub static ref LINK_TABLE: Arc<Vec<(u32,u32)>> =  {
+		Arc::new(Vec::new())
+	};
+}
+
 /// List all apps in the root directory
 pub fn list_apps() {
     println!("/**** APPS ****");
@@ -105,6 +112,11 @@ impl OpenFlags {
 pub fn link_file(old_name: &str, new_name: &str) {
     let inode_number = ROOT_INODE.get_entry_ino(old_name).unwrap();
     ROOT_INODE.link_insert_new_dirent(new_name, inode_number);
+	if let Some(index) = LINK_TABLE.iter().position(|&x|x.0==inode_number){
+		LINK_TABLE[index].1 += 1; // link 数量+1
+	} else {
+		LINK_TABLE.push((inode_number, 1)); // link=1
+	}
 }
 
 /// unlink a file
