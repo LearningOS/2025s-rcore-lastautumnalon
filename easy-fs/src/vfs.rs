@@ -164,11 +164,7 @@ impl Inode {
                     disk_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
                     DIRENT_SZ,
                 );
-				if dirent.inode_id() == 0{
-					continue;
-				}
                 v.push(String::from(dirent.name()));
-				
             }
             v
         })
@@ -184,13 +180,35 @@ impl Inode {
                 DIRENT_SZ,
                 );
                 if dirent.name()==name{
-					let dirent = DirEntry::empty();
+					let mut dirent = DirEntry::empty();
+					assert_eq!(disk_inode.read_at((file_count - 1)*DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),DIRENT_SZ);
 					disk_inode.write_at(i*DIRENT_SZ, dirent.as_bytes(), &self.block_device,);
+					disk_inode.size -= DIRENT_SZ as u32; 
+					return;
                 }
             }
         })
-
     }
+
+	/// get link number
+	pub fn get_nlink(&self, block_id: u32) -> u32 {
+		let fs = self.fs.lock();
+		let mut count:u32 = 0;
+		self.read_disk_inode(|disk_inode|
+		{
+			let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+			for i in 0..file_count {
+				let mut dirent = DirEntry::empty();
+				assert_eq!(disk_inode.read_at(i*DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),DIRENT_SZ);
+				let (_block_id, _) = fs.get_disk_inode_pos(dirent.inode_id());
+				if _block_id == block_id {
+					count += 1;
+				}
+			}
+		});
+		count
+	}
+
     /// 获取目录项的inode_id
     pub fn get_entry_ino(&self, name: &str) -> Option<u32> {
         let _fs = self.fs.lock();

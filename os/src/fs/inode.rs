@@ -21,12 +21,13 @@ use lazy_static::*;
 pub struct OSInode {
     readable: bool,
     writable: bool,
-    inner: UPSafeCell<OSInodeInner>,
+	/// pub inner
+    pub inner: UPSafeCell<OSInodeInner>,
 }
 /// The OS inode inner in 'UPSafeCell'
 pub struct OSInodeInner {
     offset: usize,
-    inode: Arc<Inode>,
+    pub inode: Arc<Inode>,
 }
 
 impl OSInode {
@@ -54,6 +55,8 @@ impl OSInode {
         }
         v
     }
+	/// get inode id
+	pub fn get_inode_id(&self) -> usize {self.inner.exclusive_access().inode.block_id}
 }
 
 lazy_static! {
@@ -61,12 +64,6 @@ lazy_static! {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
     };
-}
-
-lazy_static! {
-	pub static ref LINK_TABLE: Arc<Vec<(u32,u32)>> =  {
-		Arc::new(Vec::new())
-	};
 }
 
 /// List all apps in the root directory
@@ -109,24 +106,29 @@ impl OpenFlags {
 }
 
 /// link a file yinglianjie
-pub fn link_file(old_name: &str, new_name: &str) {
+pub fn link_file(old_name: &str, new_name: &str){
     let inode_number = ROOT_INODE.get_entry_ino(old_name).unwrap();
     ROOT_INODE.link_insert_new_dirent(new_name, inode_number);
-	if let Some(index) = LINK_TABLE.iter().position(|&x|x.0==inode_number){
-		LINK_TABLE[index].1 += 1; // link 数量+1
-	} else {
-		LINK_TABLE.push((inode_number, 1)); // link=1
-	}
 }
 
 /// unlink a file
 pub fn unlink_file(name: &str) -> Option<i32> {
     if let Some(inode) = ROOT_INODE.find(name) {
-        inode.clear();
-        
+        if ROOT_INODE.get_nlink(inode.block_id as u32) > 1{
+			ROOT_INODE.unlink_file(name);
+		} else {
+			inode.clear();
+			ROOT_INODE.unlink_file(name);
+		}
+		Some(0)
     } else {
         None
     }
+}
+
+/// get nlink
+pub fn get_nlink(block_id:u32) -> u32 {
+	ROOT_INODE.get_nlink(block_id)
 }
 
 /// Open a file
@@ -184,12 +186,7 @@ impl File for OSInode {
         }
         total_write_size
     }
-    // fn stat(&self) -> Stat {
-    // let mut inner = self.inner.exclusive_access();
-    // let inode = inner.inode;
-    // let ino = inode.block_id;
-
-    // inode.read_disk_inode(|disk_inode|disk_inode.is_dir())
-
-    // }
+	fn as_any(&self) -> &dyn core::any::Any {
+		self
+	}
 }
