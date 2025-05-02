@@ -144,6 +144,7 @@ fn ustack_bottom_from_tid(ustack_base: usize, tid: usize) -> usize {
     ustack_base + tid * (PAGE_SIZE + USER_STACK_SIZE)
 }
 
+
 impl TaskUserRes {
     /// Create a new TaskUserRes (Task User Resource)
     pub fn new(

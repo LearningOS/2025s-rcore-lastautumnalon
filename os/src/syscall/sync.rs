@@ -2,6 +2,7 @@ use crate::sync::{Condvar, Mutex, MutexBlocking, MutexSpin, Semaphore};
 use crate::task::{block_current_and_run_next, current_process, current_task};
 use crate::timer::{add_timer, get_time_ms};
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 /// sleep syscall
 pub fn sys_sleep(ms: usize) -> isize {
     trace!(
@@ -69,8 +70,70 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
+    if process_inner.detect {
+    let tid = current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .res
+        .as_ref()
+        .unwrap()
+        .tid;
+    for i in 0..process_inner.tasks.len() {
+        while process_inner.alloc_matrix_mutex.len() < i + 1{
+            process_inner.alloc_matrix_mutex.push(Vec::new());
+        }
+        while process_inner.alloc_matrix_mutex[i].len() < process_inner.mutex_list.len(){
+            process_inner.alloc_matrix_mutex[i].push(0);
+        }
+        while process_inner.need_matrix_mutex.len() < i + 1{
+            process_inner.need_matrix_mutex.push(Vec::new());
+        }
+        while process_inner.need_matrix_mutex[i].len() < process_inner.mutex_list.len() {
+            process_inner.need_matrix_mutex[i].push(0);
+        }
+    }
+    if mutex.available() > 0 {
+        process_inner.alloc_matrix_mutex[tid][mutex_id] += 1;
+    } else {
+        process_inner.need_matrix_mutex[tid][mutex_id] += 1;
+    }
+
+    // deadlock algorithm
+    let mut work: Vec<usize> = process_inner
+        .mutex_list
+        .iter()
+        .map(|x: &Option<Arc<dyn Mutex>>| x.as_ref().unwrap().available())
+        .collect();
+    let allocation = &process_inner.alloc_matrix_mutex;
+    let need = &process_inner.need_matrix_mutex;
+    let mut finish: Vec<bool> = Vec::new();
+    for _i in 0..process_inner.tasks.len() {
+        finish.push(false);
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..finish.len() {
+            if !finish[i] {
+                let can_finish = (0..work.len()).all(|j| need[i][j] <= work[j]);
+                if can_finish {
+                    for j in 0..work.len() {
+                        work[j] += allocation[i][j];
+                    }
+                    finish[i] = true;
+                    changed = true;
+                }
+            }
+        }
+    }
+    if finish.iter().any(|&f| !f) {
+        drop(process_inner);
+        drop(process);
+        return -0xDEAD;
+    }
+}
     drop(process_inner);
     drop(process);
     mutex.lock();
@@ -90,8 +153,18 @@ pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
+    if process_inner.detect {
+    let tid = current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .res
+        .as_ref()
+        .unwrap()
+        .tid;
+    process_inner.alloc_matrix_mutex[tid][mutex_id] -= 1;
+    }
     drop(process_inner);
     drop(process);
     mutex.unlock();
@@ -163,8 +236,71 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
+    if process_inner.detect {
+    let tid = current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .res
+        .as_ref()
+        .unwrap()
+        .tid;
+    for i in 0..process_inner.tasks.len() {
+        while process_inner.alloc_matrix_sem.len() < i + 1 {
+            process_inner.alloc_matrix_sem.push(Vec::new());
+        }
+        while process_inner.alloc_matrix_sem[i].len() < process_inner.semaphore_list.len() {
+            process_inner.alloc_matrix_sem[i].push(0);
+        }
+        while process_inner.need_matrix_sem.len() < i + 1 {
+            process_inner.need_matrix_sem.push(Vec::new());
+        }
+        while process_inner.need_matrix_sem[i].len() < process_inner.semaphore_list.len() {
+            process_inner.need_matrix_sem[i].push(0);
+        }
+    }
+
+    if sem.available() > 0 {
+        process_inner.alloc_matrix_sem[tid][sem_id] += 1;
+    } else {
+        process_inner.need_matrix_sem[tid][sem_id] += 1;
+    }
+
+    // deadlock algorithm
+    let mut work: Vec<usize> = process_inner
+        .semaphore_list
+        .iter()
+        .map(|x: &Option<Arc<Semaphore>>| x.as_ref().unwrap().available())
+        .collect();
+    let allocation = &process_inner.alloc_matrix_sem;
+    let need = &process_inner.need_matrix_sem;
+    let mut finish: Vec<bool> = Vec::new();
+    for _i in 0..process_inner.tasks.len() {
+        finish.push(false);
+    }
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        for i in 0..finish.len() {
+            if !finish[i] {
+                let can_finish = (0..work.len()).all(|j| need[i][j] <= work[j]);
+                if can_finish {
+                    for j in 0..work.len() {
+                        work[j] += allocation[i][j];
+                    }
+                    finish[i] = true;
+                    changed = true;
+                }
+            }
+        }
+    }
+    if finish.iter().any(|&f| !f) {
+        drop(process_inner);
+        return -0xDEAD;
+    }
+    }
     drop(process_inner);
     sem.down();
     0
@@ -247,5 +383,13 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
 /// YOUR JOB: Implement deadlock detection, but might not all in this syscall
 pub fn sys_enable_deadlock_detect(_enabled: usize) -> isize {
     trace!("kernel: sys_enable_deadlock_detect NOT IMPLEMENTED");
-    -1
+    if _enabled == 1 {
+        current_process().inner_exclusive_access().detect = true;
+        0
+    } else if _enabled == 0 {
+        current_process().inner_exclusive_access().detect = false;
+        0
+    } else {
+        -1
+    }
 }

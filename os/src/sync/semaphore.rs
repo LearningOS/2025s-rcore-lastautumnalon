@@ -16,6 +16,15 @@ pub struct SemaphoreInner {
 }
 
 impl Semaphore {
+    /// get available count
+    pub fn available(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        if inner.count > 0 {
+            inner.count.clone() as usize
+        } else {
+            0
+        }
+    }
     /// Create a new semaphore
     pub fn new(res_count: usize) -> Self {
         trace!("kernel: Semaphore::new");

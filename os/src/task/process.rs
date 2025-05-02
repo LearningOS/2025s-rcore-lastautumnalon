@@ -49,6 +49,16 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// alloc matrix
+    pub alloc_matrix_mutex: Vec<Vec<usize>>,
+    /// alloc matrix
+    pub alloc_matrix_sem: Vec<Vec<usize>>,
+    /// need matrix
+    pub need_matrix_mutex: Vec<Vec<usize>>,
+    /// need matrix
+    pub need_matrix_sem: Vec<Vec<usize>>,
+    /// detect flag 
+    pub detect: bool,
 }
 
 impl ProcessControlBlockInner {
@@ -119,6 +129,11 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    alloc_matrix_mutex: Vec::new(),
+                    alloc_matrix_sem: Vec::new(),
+                    need_matrix_mutex: Vec::new(),
+                    need_matrix_sem: Vec::new(),
+                    detect:false,
                 })
             },
         });
@@ -245,6 +260,11 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    alloc_matrix_mutex: Vec::new(),
+                    alloc_matrix_sem: Vec::new(),
+                    need_matrix_mutex: Vec::new(),
+                    need_matrix_sem: Vec::new(),
+                    detect: false,
                 })
             },
         });
